@@ -203,12 +203,31 @@ const StreamingControl: React.FC<StreamingControlProps> = ({
             <Loader className="w-4 h-4 animate-spin text-blue-600" />
           )}
         </div>
+      </div>
 
-        <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${getStatusColor()} animate-pulse`} />
-          <span className="text-sm font-medium text-gray-700">
-            {getStatusText()}
-          </span>
+      {/* Status Indicator - Destaque */}
+      <div className="mb-6 p-4 rounded-lg border-2" style={{
+        backgroundColor: status === 'aovivo' ? '#fef2f2' : status === 'ligado' ? '#f0fdf4' : status === 'desligado' ? '#f9fafb' : '#fef9c3',
+        borderColor: status === 'aovivo' ? '#ef4444' : status === 'ligado' ? '#22c55e' : status === 'desligado' ? '#9ca3af' : '#eab308'
+      }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-4 h-4 rounded-full ${getStatusColor()} ${status !== 'desligado' ? 'animate-pulse' : ''}`} />
+            <div>
+              <p className="text-sm font-medium text-gray-600">Status da Stream</p>
+              <p className="text-2xl font-bold" style={{
+                color: status === 'aovivo' ? '#dc2626' : status === 'ligado' ? '#16a34a' : status === 'desligado' ? '#6b7280' : '#ca8a04'
+              }}>
+                {getStatusText()}
+              </p>
+            </div>
+          </div>
+          {status === 'aovivo' && (
+            <div className="flex flex-col items-end text-sm text-gray-600">
+              <span className="font-medium">Transmitindo</span>
+              <span className="text-xs">Ao Vivo</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -241,7 +260,7 @@ const StreamingControl: React.FC<StreamingControlProps> = ({
 
           <button
             onClick={handleDesligar}
-            disabled={loading || status === 'manutencao' || status === 'desligado'}
+            disabled={loading || status === 'manutencao'}
             className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
@@ -249,7 +268,7 @@ const StreamingControl: React.FC<StreamingControlProps> = ({
             ) : (
               <Square className="w-5 h-5" />
             )}
-            <span className="font-medium">Desligar</span>
+            <span className="font-medium">Pausar</span>
           </button>
         </div>
 
