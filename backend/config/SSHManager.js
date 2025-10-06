@@ -102,12 +102,16 @@ class SSHManager {
                         let stderr = '';
 
                         stream.on('close', (code, signal) => {
-                            if (code === 0) {
-                                resolve({ success: true, stdout, stderr, code });
-                            } else {
-                                const errorMessage = stderr.trim() || stdout.trim() || 'Comando falhou';
-                                reject(new Error(`Comando falhou com código ${code}: ${errorMessage}`));
-                            }
+                            // Sempre retornar resultado, mesmo com código de erro
+                            // Isso permite que o chamador decida como tratar o resultado
+                            resolve({
+                                success: code === 0,
+                                stdout,
+                                stderr,
+                                code,
+                                exitCode: code,
+                                signal
+                            });
                         });
 
                         stream.on('data', (data) => {

@@ -29,8 +29,8 @@ router.post('/start', authMiddleware, async (req, res) => {
 
     console.log(`▶️ Iniciando aplicação Wowza para usuário: ${userLogin}`);
 
-    // Comando JMX para iniciar aplicação
-    const command = `/usr/bin/java -cp /usr/local/WowzaMediaServer/lib/wms-bootstrap.jar:/usr/local/WowzaMediaServer/lib/* com.wowza.wms.jmx.JMXCommandLine -jmx service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi -user admin -pass admin startAppInstance ${userLogin}`;
+    // Comando simplificado para iniciar aplicação (usando o método sugerido)
+    const command = `cd /usr/local/WowzaMediaServer && export WOWZA_HOME=/usr/local/WowzaMediaServer && /usr/bin/java -cp "lib/*:bin" com.wowza.wms.jmx.JMXCommandLine -jmx "service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi" -user admin -pass admin startAppInstance ${userLogin}`;
 
     // Executar comando via SSH
     const output = await SSHManager.executeCommand(serverId, command);
@@ -78,8 +78,8 @@ router.post('/stop', authMiddleware, async (req, res) => {
 
     console.log(`⏹️ Parando aplicação Wowza para usuário: ${userLogin}`);
 
-    // Comando JMX para parar aplicação
-    const command = `/usr/bin/java -cp /usr/local/WowzaMediaServer/lib/wms-bootstrap.jar:/usr/local/WowzaMediaServer/lib/* com.wowza.wms.jmx.JMXCommandLine -jmx service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi -user admin -pass admin shutdownAppInstance ${userLogin}`;
+    // Comando simplificado para parar aplicação
+    const command = `cd /usr/local/WowzaMediaServer && export WOWZA_HOME=/usr/local/WowzaMediaServer && /usr/bin/java -cp "lib/*:bin" com.wowza.wms.jmx.JMXCommandLine -jmx "service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi" -user admin -pass admin shutdownAppInstance ${userLogin}`;
 
     // Executar comando via SSH
     const output = await SSHManager.executeCommand(serverId, command);
@@ -128,7 +128,7 @@ router.post('/restart', authMiddleware, async (req, res) => {
     console.log(`🔄 Reiniciando aplicação Wowza para usuário: ${userLogin}`);
 
     // Primeiro, parar a aplicação
-    const stopCommand = `/usr/bin/java -cp /usr/local/WowzaMediaServer/lib/wms-bootstrap.jar:/usr/local/WowzaMediaServer/lib/* com.wowza.wms.jmx.JMXCommandLine -jmx service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi -user admin -pass admin shutdownAppInstance ${userLogin}`;
+    const stopCommand = `cd /usr/local/WowzaMediaServer && export WOWZA_HOME=/usr/local/WowzaMediaServer && /usr/bin/java -cp "lib/*:bin" com.wowza.wms.jmx.JMXCommandLine -jmx "service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi" -user admin -pass admin shutdownAppInstance ${userLogin}`;
 
     console.log(`⏹️ Parando aplicação primeiro...`);
     await SSHManager.executeCommand(serverId, stopCommand);
@@ -137,7 +137,7 @@ router.post('/restart', authMiddleware, async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Depois, iniciar a aplicação
-    const startCommand = `/usr/bin/java -cp /usr/local/WowzaMediaServer/lib/wms-bootstrap.jar:/usr/local/WowzaMediaServer/lib/* com.wowza.wms.jmx.JMXCommandLine -jmx service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi -user admin -pass admin startAppInstance ${userLogin}`;
+    const startCommand = `cd /usr/local/WowzaMediaServer && export WOWZA_HOME=/usr/local/WowzaMediaServer && /usr/bin/java -cp "lib/*:bin" com.wowza.wms.jmx.JMXCommandLine -jmx "service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi" -user admin -pass admin startAppInstance ${userLogin}`;
 
     console.log(`▶️ Iniciando aplicação novamente...`);
     const output = await SSHManager.executeCommand(serverId, startCommand);
@@ -184,7 +184,7 @@ router.get('/status', authMiddleware, async (req, res) => {
     const serverId = userData.codigo_servidor || 1;
 
     // Comando para verificar status (lista todas as aplicações)
-    const command = `/usr/bin/java -cp /usr/local/WowzaMediaServer/lib/wms-bootstrap.jar:/usr/local/WowzaMediaServer/lib/* com.wowza.wms.jmx.JMXCommandLine -jmx service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi -user admin -pass admin getAppInstances`;
+    const command = `cd /usr/local/WowzaMediaServer && export WOWZA_HOME=/usr/local/WowzaMediaServer && /usr/bin/java -cp "lib/*:bin" com.wowza.wms.jmx.JMXCommandLine -jmx "service:jmx:rmi://localhost:8084/jndi/rmi://localhost:8085/jmxrmi" -user admin -pass admin getAppInstances`;
 
     const output = await SSHManager.executeCommand(serverId, command);
 

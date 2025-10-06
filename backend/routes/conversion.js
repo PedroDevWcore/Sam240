@@ -356,90 +356,71 @@ router.post('/convert', authMiddleware, async (req, res) => {
       });
     }
 
-    // Comando FFmpeg para conversão (escape de aspas para bash)
+    // Comando FFmpeg para conversão - executar em background e retornar imediatamente
     const [width, height] = targetResolution.split('x');
-    const escapedInputPath = inputPath.replace(/"/g, '\\"');
-    const escapedOutputPath = outputPath.replace(/"/g, '\\"');
-    const ffmpegCommand = `bash -c 'ffmpeg -i "${escapedInputPath}" -c:v libx264 -preset medium -crf 23 -b:v ${targetBitrate}k -maxrate ${targetBitrate}k -bufsize ${targetBitrate * 2}k -vf "scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:ow-iw/2:oh-ih/2" -c:a aac -b:a 128k -movflags +faststart -f mp4 "${escapedOutputPath}" -y 2>&1 && echo CONVERSION_SUCCESS || echo CONVERSION_ERROR'`;
+    const logFile = `/tmp/conversion_${video_id}_${Date.now()}.log`;
 
-    console.log(`🔄 Iniciando conversão: ${video.nome} -> ${qualityLabel}`);
+    // Criar comando que executa em background e registra no log
+    const ffmpegCommand = `nohup bash -c 'ffmpeg -i "${inputPath}" -c:v libx264 -preset medium -crf 23 -b:v ${targetBitrate}k -maxrate ${targetBitrate}k -bufsize ${targetBitrate * 2}k -vf "scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:ow-iw/2:oh-ih/2" -c:a aac -b:a 128k -movflags +faststart -f mp4 "${outputPath}" -y > ${logFile} 2>&1 && echo "CONVERSION_SUCCESS" >> ${logFile} || echo "CONVERSION_ERROR" >> ${logFile}' > /dev/null 2>&1 & echo "STARTED_PID_$!"`;
+
+    console.log(`🔄 Iniciando conversão em background: ${video.nome} -> ${qualityLabel}`);
     console.log(`📁 Caminho de entrada: ${inputPath}`);
     console.log(`📁 Caminho de saída: ${outputPath}`);
-    
-    // Executar conversão de forma síncrona para verificar resultado imediatamente
+    console.log(`📝 Log da conversão: ${logFile}`);
+
+    // Executar conversão em background
     try {
-      const conversionResult = await SSHManager.executeCommand(serverId, ffmpegCommand);
-      
-      if (conversionResult.stdout.includes('CONVERSION_SUCCESS')) {
-        console.log(`✅ Conversão concluída: ${video.nome} -> ${qualityLabel}`);
-        
-        // Obter tamanho do arquivo convertido
-        const convertedFileInfo = await SSHManager.getFileInfo(serverId, outputPath);
-        const convertedSize = convertedFileInfo.exists ? convertedFileInfo.size : 0;
-        
-        // Inserir novo vídeo convertido no banco
-        const relativePath = `${userLogin}/${video.folder_name}/${outputFileName}`;
-        
-        const [insertResult] = await db.execute(
-          `INSERT INTO videos (
-            nome, url, caminho, duracao, tamanho_arquivo,
-            codigo_cliente, pasta, bitrate_video, formato_original,
-            largura, altura, is_mp4, compativel, codec_video, origem
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'mp4', ?, ?, 1, 'sim', 'h264', 'conversao')`,
-          [
-            outputFileName,
-            `streaming/${relativePath}`,
-            outputPath,
-            video.duracao,
-            convertedSize,
-            userId,
-            video.pasta,
-            targetBitrate,
-            width,
-            height
-          ]
-        );
-        
-        // Atualizar vídeo original para marcar como tendo versão convertida
-        await db.execute(
-          'UPDATE videos SET compativel = "otimizado", has_converted_version = 1 WHERE id = ?',
-          [video_id]
-        );
-        
-        // Atualizar espaço usado na pasta
-        const spaceMB = Math.ceil(convertedSize / (1024 * 1024));
-        await db.execute(
-          'UPDATE folders SET espaco_usado = espaco_usado + ? WHERE id = ?',
-          [spaceMB, video.pasta]
-        );
-        
-        res.json({
-          success: true,
-          message: `Conversão concluída: ${video.nome} -> ${qualityLabel}`,
-          conversion_id: insertResult.insertId,
-          target_bitrate: targetBitrate,
-          target_resolution: targetResolution,
-          quality_label: qualityLabel,
-          output_path: outputPath,
-          file_size: convertedSize,
-          new_video_id: insertResult.insertId,
-          relative_path: relativePath
-        });
-      } else {
-        console.error(`❌ Erro na conversão: ${video.nome}`);
-        console.error(`Detalhes do erro: ${conversionResult.stderr || 'Erro desconhecido'}`);
-        
-        res.status(500).json({
-          success: false,
-          error: 'Erro na conversão do vídeo',
-          details: conversionResult.stderr || 'Falha no FFmpeg'
-        });
-      }
+      const startResult = await SSHManager.executeCommand(serverId, ffmpegCommand);
+
+      // Extrair PID do processo iniciado
+      const pidMatch = startResult.stdout.match(/STARTED_PID_(\d+)/);
+      const conversionPid = pidMatch ? pidMatch[1] : null;
+
+      console.log(`✅ Conversão iniciada em background - PID: ${conversionPid}`);
+
+      // Inserir registro de conversão pendente no banco
+      const relativePath = `${userLogin}/${video.folder_name}/${outputFileName}`;
+
+      const [insertResult] = await db.execute(
+        `INSERT INTO videos (
+          nome, url, caminho, duracao, tamanho_arquivo,
+          codigo_cliente, pasta, bitrate_video, formato_original,
+          largura, altura, is_mp4, compativel, codec_video, origem
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'mp4', ?, ?, 1, 'processando', 'h264', 'conversao')`,
+        [
+          outputFileName,
+          `streaming/${relativePath}`,
+          outputPath,
+          video.duracao,
+          0, // Tamanho será atualizado quando a conversão terminar
+          userId,
+          video.pasta,
+          targetBitrate,
+          width,
+          height
+        ]
+      );
+
+      res.json({
+        success: true,
+        message: `Conversão iniciada: ${video.nome} -> ${qualityLabel}. O vídeo estará disponível em alguns minutos.`,
+        conversion_id: insertResult.insertId,
+        target_bitrate: targetBitrate,
+        target_resolution: targetResolution,
+        quality_label: qualityLabel,
+        output_path: outputPath,
+        new_video_id: insertResult.insertId,
+        relative_path: relativePath,
+        status: 'processing',
+        log_file: logFile,
+        pid: conversionPid
+      });
+
     } catch (conversionError) {
-      console.error('Erro na conversão:', conversionError);
+      console.error('Erro ao iniciar conversão:', conversionError);
       res.status(500).json({
         success: false,
-        error: 'Erro ao executar conversão',
+        error: 'Erro ao iniciar conversão',
         details: conversionError.message
       });
     }
@@ -460,15 +441,14 @@ router.get('/status/:videoId', authMiddleware, async (req, res) => {
     const videoId = req.params.videoId;
     const userId = req.user.id;
 
-    // Buscar vídeo original e suas conversões
+    // Buscar vídeo específico
     const [conversionRows] = await db.execute(
-      `SELECT 
+      `SELECT
         id, nome, bitrate_video, caminho, tamanho_arquivo, compativel,
-        origem, codec_video, formato_original
-       FROM videos 
-       WHERE codigo_cliente = ? AND (id = ? OR nome LIKE ? OR origem = 'conversao')
-       ORDER BY id DESC`,
-      [userId, videoId, `%_${videoId}_%`]
+        origem, codec_video, formato_original, pasta
+       FROM videos
+       WHERE codigo_cliente = ? AND id = ?`,
+      [userId, videoId]
     );
 
     if (conversionRows.length === 0) {
@@ -481,37 +461,62 @@ router.get('/status/:videoId', authMiddleware, async (req, res) => {
       });
     }
 
-    // Buscar vídeo convertido (origem = 'conversao') ou vídeo original compatível
-    const conversion = conversionRows.find(v => v.origem === 'conversao') || conversionRows[0];
-    
+    const conversion = conversionRows[0];
+
     const [serverRows] = await db.execute(
       'SELECT codigo_servidor FROM streamings WHERE codigo_cliente = ? LIMIT 1',
       [userId]
     );
 
     const serverId = serverRows.length > 0 ? serverRows[0].codigo_servidor : 1;
+
+    // Verificar se arquivo existe
     const fileExists = await SSHManager.getFileInfo(serverId, conversion.caminho);
 
     // Determinar status baseado na compatibilidade e existência do arquivo
-    let status = 'nao_iniciada';
-    if (conversion.compativel === 'otimizado' && fileExists.exists) {
+    let status = 'processando';
+    let progress = 50;
+
+    if (conversion.compativel === 'processando') {
+      // Ainda processando - verificar se arquivo já está completo
+      if (fileExists.exists && fileExists.size > 1024) {
+        // Arquivo existe e tem tamanho razoável - conversão concluída
+        status = 'concluida';
+        progress = 100;
+
+        // Atualizar no banco
+        await db.execute(
+          'UPDATE videos SET compativel = \"otimizado\", tamanho_arquivo = ? WHERE id = ?',
+          [fileExists.size, videoId]
+        );
+
+        // Atualizar espaço usado na pasta
+        const spaceMB = Math.ceil(fileExists.size / (1024 * 1024));
+        await db.execute(
+          'UPDATE folders SET espaco_usado = espaco_usado + ? WHERE id = ?',
+          [spaceMB, conversion.pasta]
+        );
+      } else if (!fileExists.exists) {
+        // Arquivo não existe ainda - ainda processando
+        status = 'processando';
+        progress = 50;
+      }
+    } else if (conversion.compativel === 'otimizado' && fileExists.exists) {
       status = 'concluida';
-    } else if (conversion.origem === 'conversao' && fileExists.exists) {
-      status = 'concluida';
+      progress = 100;
     } else if (conversion.origem === 'conversao' && !fileExists.exists) {
       status = 'erro';
-    } else {
-      status = 'nao_iniciada';
+      progress = 0;
     }
 
     res.json({
       success: true,
       conversion_status: {
         status: status,
-        progress: status === 'concluida' ? 100 : status === 'erro' ? 0 : 50,
+        progress: progress,
         quality: conversion.origem === 'conversao' ? `${conversion.bitrate_video}kbps` : 'Original',
         bitrate: conversion.bitrate_video,
-        file_size: conversion.tamanho_arquivo || 0,
+        file_size: conversion.tamanho_arquivo || (fileExists.exists ? fileExists.size : 0),
         codec: conversion.codec_video,
         format: conversion.formato_original
       }
@@ -519,10 +524,10 @@ router.get('/status/:videoId', authMiddleware, async (req, res) => {
 
   } catch (err) {
     console.error('Erro ao verificar status da conversão:', err);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao verificar status da conversão', 
-      details: err.message 
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao verificar status da conversão',
+      details: err.message
     });
   }
 });
